@@ -10,12 +10,15 @@
   (int (Math/sqrt (count maze))))
 
 (defn maze-index [maze x y]
+  "Return the index into `maze` by the (`x`, `y`) coords"
   (+ x (* y (maze-size maze))))
 
 (defn maze-at [maze x y]
+  "Return the value of `maze` at coordinate (`x`, `y`)"
   (maze (maze-index maze x y)))
 
 (defn maze-assoc [maze x y val]
+  "Return a new maze with the `maze` at (`x`, `y`) set to `val`"
   (assoc maze (maze-index maze x y) val))
 
 (defn maze-print [maze]
@@ -59,90 +62,9 @@
 ;; with it and work up to the ones that require studying
 ;; up on your graph theory.
 
-
-;; some utility funcs, moved out of maze-generation
-(defn vline [x y1 y2]
-  (map #(conj [] x %) (range y1 y2)))
-
-(defn hline [y x1 x2]
-  (map #(conj [] % y) (range x1 x2)))
-
-(defn midpoint [l u]
-  (int (+ l (/ (- u l) 2))))
-
-(defn rand-between [l u]
-  "random number between `l` (inclusive) and `u` (exclusive)"
-  (let [lower (min l u)
-        upper (max l u)]
-    (+ lower (rand-int (- upper lower)))))
-
-(defn rand-between-except [lower upper except]
-  (first (shuffle (vec (apply disj (set (range lower upper)) except)))))
-
-(defn maze-generation-recursive-algorithm [size max-iterations]
-  (let [maze (maze-init size)
-        bounding-box (concat
-                      (vline 0 0 size)
-                      (vline (dec size) 0 size)
-                      (hline 0 0 size)
-                      (hline (dec size) 0 size))
-        start [(rand-between 0 size) 0]
-        end [(rand-between 0 size) (dec size)]
-        bounded-maze (maze-assoc-at-seq maze bounding-box 1)
-        bounded-maze-with-doors (maze-assoc-at-seq bounded-maze (conj [] start end) 0)]
-
-    (defn gen-doors [left right top bottom rx ry]
-      (let [ldoor [(rand-between left rx) ry]
-            rdoor [(rand-between (inc rx) right) ry]
-            tdoor [rx (rand-between top ry)]
-            bdoor [rx (rand-between (inc ry) bottom)]
-            doors (conj [] ldoor rdoor tdoor bdoor)
-            doors-clamped (maze-clamp-seq left right top bottom doors)]
-        (println "rdoor " rdoor " ldoor " ldoor " bdoor " bdoor " tdoor " tdoor)
-        (if (> 3 (count doors-clamped))
-          (drop 1 (shuffle doors-clamped))
-          (shuffle doors-clamped))))
-
-    (defn generate-inner [m left right top bottom]
-      (let [width (- right left)
-            height (- bottom top)]
-        (if (or (< width 2) (< height 2))
-          m
-          (let [
-                rx (rand-between left right)
-                ry (rand-between top bottom)
-                ;; rx (midpoint left right)
-                ;; ry (midpoint top bottom)
-                vdiv (vline rx top bottom)
-                hdiv (hline ry left right)
-                divs (concat vdiv hdiv)
-                doors (gen-doors left right top bottom rx ry)]
-            (println "left " left " right " right " ry " ry " rx " rx)
-            ;; (println vdiv)
-            ;; (println divs)
-            ;; (maze-print (maze-assoc-at-seq m divs 1))
-            ;; (println " doors " doors)
-            ;; (maze-print (maze-assoc-at-seq m doors 1))
-            (let [cur-maze (maze-assoc-at-seq (maze-assoc-at-seq m divs 1) doors 0)]
-              (maze-print cur-maze)
-              (let [top-left-maze (generate-inner cur-maze left rx top ry)
-                    top-right-maze (generate-inner top-left-maze (inc rx) right top ry)
-                    bottom-left-maze (generate-inner top-right-maze left rx (inc ry) bottom)
-                    bottom-right-maze (generate-inner bottom-left-maze (inc rx) right (inc ry) bottom)]
-                bottom-right-maze))
-            ))))
-     (generate-inner bounded-maze-with-doors 1 (dec size) 0 (dec size))))
-
-(def m2 (maze-generation-recursive-algorithm 20))
-(draw m2)
-(def m (maze-init 10))
-(maze-print m)
-
-(maze-at m 9 1)
-(maze-at (maze-assoc m 9 1 1) 9 1)
-(maze-print (maze-assoc-at-seq m [[1 1] [2 2] [3 3] [4 4]] 1))
-(maze-print (maze-assoc m 9 0 1))
-
+;; Routines for drawing the Maze using Java AWT
+;; -- these became necessary when maze-print wasn't giving
+;; me enough feedback
 (def maze-grid-multiplier 20)
 
 (defn maze-draw [maze graphics]
@@ -161,6 +83,7 @@
 (defn draw [maze]
   (let [size-mult (* maze-grid-multiplier (maze-size maze))
         image  (BufferedImage. size-mult size-mult BufferedImage/TYPE_INT_RGB)
+        ;; TODO learn what proxy and paint do
         canvas (proxy [JLabel] []
                  (paint [g]
                    (.drawImage g image 0 0 this)))
@@ -171,3 +94,105 @@
       (.setSize size-mult size-mult)
       (.show))))
 
+
+;; some utility funcs, moved out of maze-generation
+(defn vline [x y1 y2]
+  "Given an x coordinate and starting y1 y2 coords, return
+   a seq of points along the vertical line formed between y1-y2"
+  (map #(conj [] x %) (range y1 y2)))
+
+(defn hline [y x1 x2]
+    "Given a y coordinate and starting x1 x2 coords, return
+   a seq of points along the horizontal line formed between y1-y2"
+  (map #(conj [] % y) (range x1 x2)))
+
+(defn midpoint [l u]
+  (int (+ l (/ (- u l) 2))))
+
+(defn rand-between [l u]
+  "random number between `l` (inclusive) and `u` (exclusive)"
+  (let [lower (min l u)
+        upper (max l u)]
+    (+ lower (rand-int (- upper lower)))))
+
+(defn rand-between-except [lower upper except]
+  (first (shuffle (vec (apply disj (set (range lower upper)) except)))))
+
+(defn shrink-coords
+  ([lx rx ty dy] (shrink-coords lx rx ty dy 1))
+  ([lx rx ty dy delta]
+   [(+ lx delta) (- rx delta) (+ ty delta) (- dy delta)]))
+
+(defn maze-generation-recursive-algorithm
+  ([size] (maze-generation-recursive-algorithm size (* size size)))
+  ([size max-iterations]
+   (let [maze (maze-init size)
+         bounding-box (concat
+                       (vline 0 0 size)
+                       (vline (dec size) 0 size)
+                       (hline 0 0 size)
+                       (hline (dec size) 0 size))
+         start [(rand-between 1 (dec size)) 0]
+         end [(rand-between 1 (dec size)) (dec size)]
+         bounded-maze (maze-assoc-at-seq maze bounding-box 1)
+         bounded-maze-with-doors (maze-assoc-at-seq bounded-maze (conj [] start end) 0)]
+
+     (defn gen-doors [left right top bottom rx ry]
+       (let [ldoor [(rand-between left rx) ry]
+             rdoor [(rand-between (inc rx) right) ry]
+             tdoor [rx (rand-between top ry)]
+             bdoor [rx (rand-between (inc ry) bottom)]
+             doors (conj [] ldoor rdoor tdoor bdoor)
+             doors-clamped (maze-clamp-seq left right top bottom doors)]
+         (println "rdoor " rdoor " ldoor " ldoor " bdoor " bdoor " tdoor " tdoor)
+         (if (> 3 (count doors-clamped))
+           (drop 1 (shuffle doors-clamped))
+           (shuffle doors-clamped))))
+
+     (defn generate-inner [m left right top bottom i]
+       (let [width (- right left)
+             height (- bottom top)]
+         (if (or (< width 2) (< height 2) (<= i 0))
+           m
+           (let [rx (rand-between (+ 2 left) (- right 2))
+                 ry (rand-between (+ 2 top) (- bottom 2))
+                 ;; rx (midpoint left right)
+                 ;; ry (midpoint top bottom)
+                 vdiv (vline rx top bottom)
+                 hdiv (hline ry left right)
+                 divs (concat vdiv hdiv)
+                 doors (gen-doors left right top bottom rx ry)]
+             (println "left " left " right " right " ry " ry " rx " rx)
+             ;; (println vdiv)
+             ;; (println divs)
+             ;; (maze-print (maze-assoc-at-seq m divs 1))
+             ;; (println " doors " doors)
+             ;; (maze-print (maze-assoc-at-seq m doors 1))
+             (let [cur-maze (maze-assoc-at-seq (maze-assoc-at-seq m divs 1) doors 0)]
+               (maze-print cur-maze)
+               (let [top-left-coords (shrink-coords left rx top ry 0)
+                     top-left-maze (apply generate-inner cur-maze (conj top-left-coords (dec i)))
+                     top-right-coords (shrink-coords (inc rx) right top ry 0)
+                     top-right-maze (apply generate-inner top-left-maze (conj top-right-coords (- i 2)))
+                     bottom-left-coords (shrink-coords left rx (inc ry) bottom 0)
+                     bottom-left-maze (apply generate-inner top-right-maze (conj bottom-left-coords (- i 3)))
+                     bottom-right-coords (shrink-coords (inc rx) right (inc ry) bottom 0)
+                     bottom-right-maze (apply generate-inner bottom-left-maze (conj bottom-right-coords (- i 4)))]
+                 bottom-right-maze))
+             ))))
+     (generate-inner bounded-maze-with-doors 1 (dec size) 0 (dec size) max-iterations))))
+
+(def m2 (maze-generation-recursive-algorithm 21 2))
+(draw m2)
+(def m (maze-init 10))
+(maze-print m)
+(maze-at m 9 1)
+(maze-at (maze-assoc m 9 1 1) 9 1)
+(maze-print (maze-assoc-at-seq m [[1 1] [2 2] [3 3] [4 4]] 1))
+(maze-print (maze-assoc m 9 0 1))
+
+;; Reflections / TODOs
+;; - It might have been / still be better to model Points as maps {:x 1 :y 2}
+;; - You're missing basic math ops like translating a Point by a vector, scaling a Rectangle, etc
+;;   that might be useful here.
+;;   - In part this seems to be a failure to recognize these core types and write utility funcs for them
